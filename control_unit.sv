@@ -24,6 +24,12 @@ module control_unit (
     input logic [2:0]  instr_type
 
 
+    //Connect to Register File
+
+
+    //Connect to Memory Access Unit
+    
+
     output logic [4:0] rs1,
     output logic [4:0] rs2,
 
