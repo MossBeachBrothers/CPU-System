@@ -207,7 +207,7 @@ module cpu_csr (
                 end
                 s_axi_rid <= arid_reg;
                 s_axi_rvalid <= 1'b1;
-                s_axi_rlast <= 1'b1; // Single beat
+                s_axi_rlast <= 1'b1;
                 read_data_pending <= 1'b1;
             end else if (s_axi_rvalid && s_axi_rready) begin
                 // Read data accepted
