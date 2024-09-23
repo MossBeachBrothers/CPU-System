@@ -1,152 +1,119 @@
-module register_file_tb;
+`timescale 1ns / 1ps
 
+module register_file_tb();
+
+    // Parameters
+    parameter CLK_PERIOD = 10; // 10ns clock period (100MHz)
+
+    // Signals
     reg clk;
-    reg reset_n;
+    reg rst_n;
+    reg we;
+    reg re;
+    reg [4:0] addr;
+    reg [31:0] wdata;
+    wire [31:0] rdata;
+    wire busy;
+    wire read_valid;
+    wire write_resp_valid;
+    wire [1:0] write_resp;
 
-    // Simplified interface signals
-    reg write_enable;
-    reg [4:0] write_address;
-    reg [31:0] write_data;
-    reg read_enable;
-    reg [4:0] read_address;
-
-    // Outputs
-    wire [31:0] read_data;
-    wire read_data_valid;
-
-    // Instantiate the register_file module
+    // Instantiate the register_file
     register_file uut (
         .clk(clk),
-        .reset_n(reset_n),
-        .write_enable(write_enable),
-        .write_address(write_address),
-        .write_data(write_data),
-        .read_enable(read_enable),
-        .read_address(read_address),
-        .read_data(read_data),
-        .read_data_valid(read_data_valid)
+        .rst_n(rst_n),
+        .we(we),
+        .re(re),
+        .addr(addr),
+        .wdata(wdata),
+        .rdata(rdata),
+        .busy(busy),
+        .read_valid(read_valid),
+        .write_resp_valid(write_resp_valid),
+        .write_resp(write_resp)
     );
 
-    initial begin
-        // Initialize signals
-        clk = 0;
-        reset_n = 0;
-        write_enable = 0;
-        read_enable = 0;
-        write_address = 0;
-        write_data = 0;
-        read_address = 0;
-
-        // Release reset
-        #10 reset_n = 1; 
-
-        // Run tests
-        test_write_read();
-        test_edge_cases();
-        
-        // End simulation
-        #50 $finish;
+    // Clock generation
+    always begin
+        clk = 1'b0;
+        #(CLK_PERIOD/2);
+        clk = 1'b1;
+        #(CLK_PERIOD/2);
     end
 
-    always #5 clk = ~clk; // Clock generation
+    // Test procedure
+    initial begin
+        // Initialize signals
+        rst_n = 0;
+        we = 0;
+        re = 0;
+        addr = 0;
+        wdata = 0;
 
-    // Task to perform write and read operations
-    task test_write_read();
+        // Reset
+        #(CLK_PERIOD*2);
+        rst_n = 1;
+        #(CLK_PERIOD*2);
+
+        // Test write operations
+        for (int i = 0; i < 5; i = i + 1) begin
+            write_data(i, 32'hA0A0_0000 + i);
+            #(CLK_PERIOD*10);
+        end
+
+        // Test read operations
+        for (int i = 0; i < 5; i = i + 1) begin
+            read_data(i);
+            #(CLK_PERIOD*10);
+        end
+
+        // End simulation
+        #(CLK_PERIOD*10);
+        $finish;
+    end
+
+    // Write task
+    task write_data(input [4:0] write_addr, input [31:0] write_data);
         begin
-            // Write to address 5
-            write_enable = 1;
-            write_address = 5;
-            write_data = 32'hA5A5A5A5;
-            #10;
-
-            // Disable write
-            write_enable = 0;
-
-            // Read from address 5
-            read_enable = 1;
-            read_address = 5;
-            #10;
-
-            // Wait for read to be valid
-            if (read_data_valid) begin
-                $display("Read Data from Address %d: 0x%h (Expected: 0xA5A5A5A5)", read_address, read_data);
+            $display("Writing 0x%h to address %0d", write_data, write_addr);
+            @(posedge clk);
+            addr = write_addr;
+            wdata = write_data;
+            we = 1'b1;
+            @(posedge clk);
+            we = 1'b0;
+            wait(!busy);
+            if (write_resp_valid) begin
+                $display("Write response: %0d", write_resp);
             end else begin
-                $display("Read Data not valid");
+                $display("Error: No write response received");
             end
-
-            // Additional writes and reads
-            write_enable = 1;
-            write_address = 10;
-            write_data = 32'hDEADBEEF;
-            #10;
-            write_enable = 0;
-
-            read_enable = 1;
-            read_address = 10;
-            #10;
-
-            if (read_data_valid) begin
-                $display("Read Data from Address %d: 0x%h (Expected: 0xDEADBEEF)", read_address, read_data);
-            end else begin
-                $display("Read Data not valid");
-            end
-
-            // Reset read_enable for next test
-            read_enable = 0;
         end
     endtask
 
-    // Task to test edge cases
-    task test_edge_cases();
+    // Read task
+    task read_data(input [4:0] read_addr);
         begin
-            // Attempt to read from an invalid address
-            read_enable = 1;
-            read_address = 31; // Out of bounds for testing
-            #10;
-
-            if (read_data_valid) begin
-                $display("Read from Address %d: 0x%h (Expected: 0x00000000)", read_address, read_data);
+            $display("Reading from address %0d", read_addr);
+            @(posedge clk);
+            addr = read_addr;
+            re = 1'b1;
+            @(posedge clk);
+            re = 1'b0;
+            wait(!busy);
+            if (read_valid) begin
+                $display("Read data: 0x%h", rdata);
             end else begin
-                $display("Read Data not valid");
+                $display("Error: No valid read data received");
             end
-
-            // Write to an address and read back
-            write_enable = 1;
-            write_address = 15;
-            write_data = 32'h12345678;
-            #10;
-            write_enable = 0;
-
-            read_enable = 1;
-            read_address = 15;
-            #10;
-
-            if (read_data_valid) begin
-                $display("Read Data from Address %d: 0x%h (Expected: 0x12345678)", read_address, read_data);
-            end else begin
-                $display("Read Data not valid");
-            end
-
-            // Check multiple writes to the same address
-            write_enable = 1;
-            write_address = 15;
-            write_data = 32'hFFFFFFFF;
-            #10;
-            write_enable = 0;
-
-            // Read again
-            read_enable = 1;
-            read_address = 15;
-            #10;
-
-            if (read_data_valid) begin
-                $display("Read Data from Address %d after overwrite: 0x%h (Expected: 0xFFFFFFFF)", read_address, read_data);
-            end else begin
-                $display("Read Data not valid");
-            end
-
-            // Final cleanup
-            read_enable = 0;
         end
     endtask
+
+    // Monitor for busy signal
+    always @(posedge clk) begin
+        if (busy) begin
+            $display("Busy signal asserted at time %0t", $time);
+        end
+    end
+
 endmodule
