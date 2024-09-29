@@ -1,52 +1,27 @@
 module cpu_core (
-    input wire clk
-);
+    input wire clk,
+    input wire resetn,
+); 
 
-    // Define state type
-    typedef enum logic [2:0] { // Adjust size as needed
-        FETCH = 3'b000,
-        DECODE = 3'b001,
-        EXECUTE = 3'b010,
-        READ_REGISTER = 3'b011,
-        WRITE_REGISTER = 3'b100,
-        READ_MEMORY = 3'b101,
-        WRITE_MEMORY = 3'b110
-    } state_t;
+    
 
-    // State variables
-    state_t current_state, next_state;
+    iccm_wrapper iccm_inst ();
 
-    // Instantiate other modules
-    instruction_fetch_unit ifu_inst (
-        // Connect ports as needed
-    );
+    dccm_wrapper dccm_inst();
 
-    control_unit cu_inst (
-        // Connect ports as needed
-    );
+    instruction_fetch_unit ifu_inst ();
 
-    iccm iccm_inst (
-        // Connect ports as needed
-    );
+    instruction_decode_unit idu_isnt();
 
-    dccm dccm_inst (
-        // Connect ports as needed
-    );
+    control_unit cu_inst ();
 
-    program_counter pc_inst (
-        // Connect ports as needed
-    );
+    alu alu_inst();
 
-    alu alu_inst (
-        // Connect ports as needed
-    );
+    register_file reg_file_inst ();
 
-    cpu_csr cpu_csr_inst (
-        // Connect ports as needed
-    );
+    mau mau_inst ();
 
-    axi_crossbar axi_inst (
-        // Connect ports as needed
-    );
 
-endmodule
+
+
+endmodule 
