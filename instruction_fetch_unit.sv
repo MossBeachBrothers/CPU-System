@@ -1,85 +1,88 @@
+`timescale 1ns / 1ps
+
 module instruction_fetch_unit (
-    input  wire        s_aclk,
-    input  wire        s_aresetn,
-    input  wire [31:0] address,
-    input  wire        fetch,
-    output reg  [31:0] instruction,
+    input  logic        clk,
+    input  logic        resetn,
+    input  logic        fetch_enable,
+    input  logic [31:0] fetch_addr,
+    output logic [31:0] instruction,
+    output logic        instr_valid,
 
-    // AXI Master Interface Ports
-    // AXI4 Master Read Address Channel Signals
-    output reg [31:0] m_axi_araddr,
-    output reg [1:0]  m_axi_arburst,
-    output reg [3:0]  m_axi_arid,
-    output reg [7:0]  m_axi_arlen,
-    input  wire       m_axi_arready,
-    output reg [2:0]  m_axi_arsize,
-    output reg        m_axi_arvalid,
-
-    // AXI4 Master Read Data Channel Signals
-    input  wire [31:0] m_axi_rdata,
-    input  wire [3:0]  m_axi_rid,
-    input  wire        m_axi_rlast,
-    output reg         m_axi_rready,
-    input  wire [1:0]  m_axi_rresp,
-    input  wire        m_axi_rvalid
+    // AXI interface to ICCM memory
+    output logic [31:0] s_axi_araddr,
+    output logic [1:0]  s_axi_arburst,
+    output logic [3:0]  s_axi_arid,
+    output logic [7:0]  s_axi_arlen,
+    output logic        s_axi_arvalid,
+    input  logic        s_axi_arready,
+    input  logic [31:0] s_axi_rdata,
+    input  logic        s_axi_rvalid,
+    output logic        s_axi_rready
 );
 
-    // State Machine Definition
-    typedef enum logic [1:0] {
-        IDLE,
-        READ_ADDR,
-        READ_DATA
-    } state_t;
+    // Define state types
+    typedef enum logic [1:0] {IDLE, FETCH, WAIT, DONE} state_t;
+    state_t state, next_state;
 
-    state_t state;
+    // AXI burst type configuration
+    logic [2:0] s_axi_arsize = 3'b010; // Burst size: 4 bytes (32 bits)
 
-    // State Machine for AXI Read Transactions
-    always_ff @(posedge s_aclk) begin
-        if (~s_aresetn) begin
-            state           <= IDLE;
-            m_axi_araddr    <= 32'd0;
-            m_axi_arburst   <= 2'd0;
-            m_axi_arid      <= 4'd0;
-            m_axi_arlen     <= 8'd0;
-            m_axi_arsize    <= 3'd0;
-            m_axi_arvalid   <= 1'b0;
-            m_axi_rready    <= 1'b0;
-            instruction     <= 32'd0;
+    // Sequential logic for state transitions
+    always_ff @(posedge clk or negedge resetn) begin
+        if (!resetn)
+            state <= IDLE;
+        else
+            state <= next_state;  // State transitions based on combinational logic
+    end
+
+    // Output and AXI control logic
+    always_ff @(posedge clk or negedge resetn) begin
+        if (!resetn) begin
+            s_axi_arvalid <= 1'b0;
+            s_axi_rready  <= 1'b0;
+            instr_valid   <= 1'b0;
+            instruction   <= 32'b0;
         end else begin
             case (state)
                 IDLE: begin
-                    if (fetch) begin
-                        // Issue Read Address
-                        m_axi_araddr  <= address;
-                        m_axi_arburst <= 2'b01;  // INCR burst
-                        m_axi_arid    <= 4'd0;   // Transaction ID
-                        m_axi_arlen   <= 8'd0;   // Single beat
-                        m_axi_arsize  <= 3'd2;   // 4 bytes per beat
-                        m_axi_arvalid <= 1'b1;
-                        m_axi_rready  <= 1'b0;
-                        state         <= READ_ADDR;
+                    if (fetch_enable) begin
+                        s_axi_araddr  <= fetch_addr;
+                        s_axi_arburst <= 2'b01;  // INCR burst type
+                        s_axi_arid    <= 4'b0000; // Transaction ID
+                        s_axi_arlen   <= 8'b00000000; // Single transfer
+                        s_axi_arvalid <= 1'b1;
+                        instr_valid   <= 1'b0;
                     end
                 end
-                READ_ADDR: begin
-                    if (m_axi_arvalid && m_axi_arready) begin
-                        // Read Address Handshake Complete
-                        m_axi_arvalid <= 1'b0;
-                        m_axi_rready  <= 1'b1;
-                        state         <= READ_DATA;
+                FETCH: begin
+                    if (s_axi_arready) begin
+                        s_axi_arvalid <= 1'b0;
+                        s_axi_rready  <= 1'b1;
                     end
                 end
-                READ_DATA: begin
-                    if (m_axi_rvalid && m_axi_rready) begin
-                        // Read Data Available
-                        instruction <= m_axi_rdata;
-                        if (m_axi_rlast) begin
-                            m_axi_rready <= 1'b0;
-                            state        <= IDLE;
-                        end
+                WAIT: begin
+                    if (s_axi_rvalid) begin
+                        instruction <= s_axi_rdata;
+                        instr_valid <= 1'b1;
+                        s_axi_rready <= 1'b0;
                     end
+                end
+                DONE: begin
+                    // Do nothing in DONE state
                 end
             endcase
         end
+    end
+
+    // Combinational block for next state logic
+    always_comb begin
+        next_state = state;  // Default to current state
+        case (state)
+            IDLE:   if (fetch_enable) next_state = FETCH;
+            FETCH:  if (s_axi_arready) next_state = WAIT;
+            WAIT:   if (s_axi_rvalid) next_state = DONE;
+            DONE:   if (!fetch_enable) next_state = IDLE;
+        endcase
     end
 
 endmodule
