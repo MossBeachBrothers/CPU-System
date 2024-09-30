@@ -1,3 +1,4 @@
+//Control Unit Module : Takes in Decoded instruction, outputs control signal enables for modules
 module control_unit (
     input  logic        clk,
     input  logic        reset_n,
